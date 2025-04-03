@@ -19,7 +19,8 @@ dependencies:
 ### 2. Install the dependencies:
 
 Run the following command in your terminal:
-flutter pub get
+
+    flutter pub get
 
 ### Step 2: Fetch the App Version Information
 
@@ -32,29 +33,53 @@ The package_info_plus package helps you get the current version of the app insta
       return packageInfo.version; // Returns the app's version
     }
 
-### Step 3: Check for an Update
+### Step 3: Fetch App Version from PlayStore
 
-To implement the force update, you need to compare the current app version with the latest version available on your backend or a remote source (e.g., an API).
+To implement the force update, you need to compare the current app version with the latest version available on your backend or a remote source.
 
-    Future<bool> checkForUpdate(String currentVersion) async {
-      // Replace with your backend API that provides the latest version info
-      final latestVersion = await fetchLatestVersionFromAPI();
+    static const String packageName = "<Your App Package Name>";
+    static const String playStoreUrl =
+        "https://play.google.com/store/apps/details?id=$packageName";
 
-      return currentVersion != latestVersion;
+    static Future<String?> fetchPlayStoreVersion() async {
+      try {
+        final url =
+            "https://play.google.com/store/apps/details?id=$packageName&hl=en";
+        final response = await http.get(Uri.parse(url));
+
+        if (response.statusCode == 200) {
+          final match = RegExp(r'\[\[\["([0-9]+\.[0-9]+\.[0-9]+)"]]')
+              .firstMatch(response.body);
+          return match?.group(1);
+        }
+      } catch (e) {
+        print("Error fetching Play Store version: $e");
+      }
+      return null;
     }
 
-### Step 4: Implement Force Update Logic
+### Step 4: Check for Update
 
 To trigger the update when the version is outdated, use the in_app_update package.
 
-    import 'package:in_app_update/in_app_update.dart';
+    static Future<void> checkForUpdate(BuildContext context) async {
+      try {
+        final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+        final String currentVersion = packageInfo.version;
 
-    Future<void> forceUpdate() async {
-      final appUpdateInfo = await InAppUpdate.checkForUpdate();
+        final String? playStoreVersion = await fetchPlayStoreVersion();
 
-      if (appUpdateInfo.updateAvailability == UpdateAvailability.updateAvailable) {
-        // Initiates the update flow (this will prompt the user to update the app)
-        InAppUpdate.performImmediateUpdate();
+        print("Installed Version: $currentVersion, Play Store Version: $playStoreVersion");
+
+        if (playStoreVersion != null &&
+            playStoreVersion.compareTo(currentVersion) > 0) {
+          if (!context.mounted)
+            return; // Ensure context is still valid before showing dialog
+
+          showUpdateDialog(context);
+        }
+      } catch (e) {
+        print("Error checking for update: $e");
       }
     }
 
@@ -62,65 +87,100 @@ To trigger the update when the version is outdated, use the in_app_update packag
 
 Now, you can combine all the logic to check for updates and trigger the force update:
 
+    import 'dart:convert';
     import 'package:flutter/material.dart';
+    import 'package:http/http.dart' as http;
     import 'package:package_info_plus/package_info_plus.dart';
-    import 'package:in_app_update/in_app_update.dart';
+    import 'package:url_launcher/url_launcher.dart';
 
-    class ForceUpdateScreen extends StatefulWidget {
-      @override
-      _ForceUpdateScreenState createState() => _ForceUpdateScreenState();
-    }
+    class ForceUpgradeService {
+      static const String packageName = "com.rms_teacher.app";
+      static const String playStoreUrl =
+          "https://play.google.com/store/apps/details?id=$packageName";
 
-    class _ForceUpdateScreenState extends State<ForceUpdateScreen> {
-      String currentVersion = '';
+      /// ✅ Fetch latest version from Play Store
+      static Future<String?> fetchPlayStoreVersion() async {
+        try {
+          final url =
+              "https://play.google.com/store/apps/details?id=$packageName&hl=en";
+          final response = await http.get(Uri.parse(url));
 
-      @override
-      void initState() {
-        super.initState();
-        _checkForUpdate();
+          if (response.statusCode == 200) {
+            final match = RegExp(r'\[\[\["([0-9]+\.[0-9]+\.[0-9]+)"]]')
+                .firstMatch(response.body);
+            return match?.group(1);
+          }
+        } catch (e) {
+          print("Error fetching Play Store version: $e");
+        }
+        return null;
       }
 
-      Future<void> _checkForUpdate() async {
-        // Get current app version
-        currentVersion = await getCurrentVersion();
+      /// ✅ Check for update by comparing versions
+      static Future<void> checkForUpdate(BuildContext context) async {
+        try {
+          final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+          final String currentVersion = packageInfo.version;
 
-        // Check if an update is needed
-        if (await checkForUpdate(currentVersion)) {
-          // Prompt the user to update
-          forceUpdate();
+          final String? playStoreVersion = await fetchPlayStoreVersion();
+
+          print(
+              "Installed Version: $currentVersion, Play Store Version: $playStoreVersion");
+
+          if (playStoreVersion != null &&
+              playStoreVersion.compareTo(currentVersion) > 0) {
+            if (!context.mounted)
+              return; // Ensure context is still valid before showing dialog
+
+            showUpdateDialog(context);
+          }
+        } catch (e) {
+          print("Error checking for update: $e");
         }
       }
 
-      Future<String> getCurrentVersion() async {
-        PackageInfo packageInfo = await PackageInfo.fromPlatform();
-        return packageInfo.version;
-      }
-
-      Future<bool> checkForUpdate(String currentVersion) async {
-        // Replace with your API call to get the latest version
-        final latestVersion = "2.0.0"; // Example: fetch this from your backend
-
-        return currentVersion != latestVersion;
-      }
-
-      Future<void> forceUpdate() async {
-        final appUpdateInfo = await InAppUpdate.checkForUpdate();
-
-        if (appUpdateInfo.updateAvailability == UpdateAvailability.updateAvailable) {
-          // Initiates the update flow (this will prompt the user to update the app)
-          InAppUpdate.performImmediateUpdate();
-        }
-      }
-
-      @override
-      Widget build(BuildContext context) {
-        return Scaffold(
-          appBar: AppBar(title: Text('Force Update')),
-          body: Center(
-            child: Text('Checking for updates...'),
+      /// ✅ Show update dialog
+      static void showUpdateDialog(BuildContext context) {
+        print("Showing update dialog");
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Text("Update Required"),
+            content: Text("A new version of this app is available. Please update."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  print("Navigating to Play Store");
+                  launchUrl(Uri.parse(playStoreUrl),
+                      mode: LaunchMode.externalApplication);
+                },
+                child: Text("Update"),
+              ),
+            ],
           ),
         );
       }
+    }
+
+### Step 5: Implementation
+
+Implement force Upgrade on main or splash screen. In my case, I have checked in splashed screen. If you want you can implement or check directly on main.
+
+    @override
+    void initState() {
+      super.initState();
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await ForceUpgradeService.checkForUpdate(context);
+      });
+    }
+
+### Step 5: Show Alert Box
+
+    @override
+    Widget build(BuildContext context) {
+      return MaterialApp(
+          home: UpgradeAlert(upgrader: Upgrader(), child: const SplashScreen()));
     }
 
 Conclusion
